@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% load static %}
+{% block main %}
+    <main id="bootstrap-override">
+        <!-- navbar -->
+        <nav class="navbar navbar-dark navbar-expand-lg bg-dark sticky-top" data-bs-theme="dark">
+            <div class="container-fluid">
+              <!-- logo -->
+                <a class="navbar-brand" href="#">
+                    <img src="{% static 'images/logo.png' %}" id="logo" alt="Logo">
+                </a>
+                <!-- toggle button -->
+              <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNavDropdown" aria-controls="navbarNavDropdown" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+              </button>
+              <!-- navbar items -->
+              <div class="collapse navbar-collapse" id="navbarNavDropdown">
+                <ul class="navbar-nav">
+                  <li class="nav-item">
+                      <a class="nav-link active" aria-current="page" href="#">Home</a>
+                  </li>
+                  <!-- logout dropdown-->
+                  <li class="nav-item dropdown logout-dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                      {{user.name}}
+                    </a>
+                    <ul class="dropdown-menu">
+                      <li><a class="dropdown-item" href="{% url 'login_view'%}">Logout</a></li>
+                    </ul>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </nav>
+        <!-- end of navbar  -->
+        <div class="content">
+            {% block content %}
+
+            {% endblock %}
+        </div>
+        </div>
+    </main>
+{% endblock %}

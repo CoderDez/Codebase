@@ -1,0 +1,29 @@
+{% extends 'base.html'%}
+
+{% block title %} Login {% endblock %}
+
+{% load static %}
+{% block static_resources %}
+    <link rel="stylesheet" href="{% static '/css/login.css' %}">
+{% endblock %}
+
+{% block main %}
+    <div class="login">
+        <img src="{% static '/images/logo.png' %}" alt="Moolah's Eye Logo" class="login-logo"/>
+        {% if error_message %}
+            <p class="error-message">{{error_message}}</p>
+        {% endif %}
+        <form class="needs-validation" method="post" action="#">
+            {% csrf_token %}
+            <div class="form-group was-validated">
+                <label class="form-label" for="email">Email address</label>
+                <input class="form-control" type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group was-validated">
+                <label class="form-label" for="password">Password</label>
+                <input class="form-control" type="password" id="password" name="password" required>
+            </div>
+            <input  class="btn btn-success w-100 btn-custom-color"type="submit" value="SIGN IN">
+        </form>
+    </div>
+{% endblock %}
