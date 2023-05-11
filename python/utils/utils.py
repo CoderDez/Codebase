@@ -429,7 +429,6 @@ class PsycopgUtility():
 
             elif value is None:
                 return "NULL"
-
             else:
                 return value
         except:
@@ -476,7 +475,7 @@ class PsycopgUtility():
         except:
             return False
         
-    def create_tables_from_json(self, file_path: str, output_path: str, schema: str, non_null_fields: list[str], add_geom_column: bool = True):
+    def create_tables_from_json(self, json_file_path: str, output_path: str, schema: str, non_null_fields: list[str], add_geom_column: bool = True):
         """
         creates SQL statements for the creation of tables.
         
@@ -499,7 +498,7 @@ class PsycopgUtility():
 
         Arguments 
         ---------
-        `file_path`: path to json file.
+        `json_file_path`: path to json file.
 
         `output_path`: where the script is to be outputted.
 
@@ -510,7 +509,7 @@ class PsycopgUtility():
         `add_geom_column`: adds SELECT AddGeometryColumn POSTGIS function after each CREATE statement
         """
 
-        with open(file_path, 'r') as json_file, open(output_path, 'w') as script:
+        with open(json_file_path, 'r') as json_file, open(output_path, 'w') as script:
             data = json.load(json_file)
 
             crs = data["crs_id"]
@@ -576,3 +575,60 @@ class PsycopgUtility():
                     )
                 )
                       
+    def find_difference_between_fields(self, json_file_path: str, output_path, schemas: list[str], exempt_fields = list[str]):
+        """
+        finds the difference between table fields in a config file and table fields in a database table.
+
+        expects the json file to be in the following format:
+
+        {
+            "crs_id": integer,
+            "Layers" : [
+                {
+                    'name': str,
+
+                    'fields': [
+                        {field_name: datatype}
+                    ]
+                },
+            ]
+        }
+
+        Arguments 
+        ---------
+        `json_file_path`: path to json file.
+
+        `output_path`: where the results are to be outputted.
+
+        `schemas`: list of schemas to check
+
+        `exempt_fields`: fields exempt from check
+
+        """
+        select = "SELECT column_name FROM information_schema.columns WHERE table_schema = '{schema}' AND table_name = '{table}';"
+
+        with open(json_file_path) as file:
+            data = json.load(file)
+
+        for layer in data["Layers"]:
+            tbl = layer["name"]
+            config_fields = [list(fld.keys())[0] for fld in layer["fields"]]
+
+            for sch in schemas:
+                results = self.executer(select.format(schema = sch, table = tbl), True)
+                if results:
+                    db_fields = [db[0] for db in results]
+
+
+                with open(output_path, "a") as file:
+                    msg = "Within {table} in the {schema} schema {field} needs to be {action}.\n\n"
+
+                    for cfld in config_fields:
+                        if cfld not in exempt_fields:
+                            if cfld not in db_fields:
+                                file.write(msg.format(table = tbl, schema = sch, field = cfld, action="added"))
+
+                    for dfld in db_fields:
+                        if dfld not in exempt_fields:
+                            if dfld not in config_fields:
+                                file.write(msg.format(table = tbl, schema = sch, field = dfld, action="removed"))
