@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 import pdfkit
 import psycopg2
+import json
 
 class ValidatorUtility():
     
@@ -294,16 +295,16 @@ class PdfUtility():
         self.validation = ValidatorUtility()
     
 
-    def create_html_table(self, id: str, headers: list[str], rows: str, classes: list[str] = []):        
+    def create_html_table(self, id: str, headers: list[str], tbody_rows: str, table_classes: list[str] = []):        
         html = f"""
-        <table border="1" cellpadding="0" cellspacing="0" class={' '.join(cl for cl in classes)}>
+        <table border="1" cellpadding="0" cellspacing="0" id="{id}" class={' '.join(cl for cl in table_classes)}>
             <thead>
                 <tr>
                     {" ".join('<th>' + th + '</th>' for th in headers)}
                 </tr>
             <thead>
             <tbody>
-                {rows}
+                {tbody_rows}
             </tbody>
         </table>
         """
@@ -395,6 +396,9 @@ class PsycopgUtility():
         self.conn.autocommit = auto_commit
         self.curs = self.conn.cursor()
         self.dict_cur = self.conn.cursor(dictionary=True)
+        
+    def __del__(self):
+        self.conn.close()
 
     def delete_from(self, table: str, where_clause: str):
         try:
@@ -431,7 +435,6 @@ class PsycopgUtility():
         except:
             pass
 
-        
     def create_insert_stmt(self, table: str, recs: list[list], cols: list[str] = []) -> str:
         try:
             sql = f"INSERT INTO {table} "
@@ -463,15 +466,113 @@ class PsycopgUtility():
         except:
             pass
 
-
-    def executer(self, sql: str, fetch_reslts: bool = False):
+    def executer(self, sql: str, fetch_results: bool = False):
         try:
             self.curs.execute(sql)
-            if fetch_reslts:
+            if fetch_results:
                 return self.curs.fetchall()
             else:
                 return True
         except:
             return False
         
-    
+    def create_tables_from_json(self, file_path: str, output_path: str, schema: str, non_null_fields: list[str], add_geom_column: bool = True):
+        """
+        creates SQL statements for the creation of tables.
+        
+        expects the json file to be in the following format:
+
+        {
+            "crs_id": integer,
+            "Layers" : [
+                {
+                    'name': str,
+
+                    'fields': [
+                        {field_name: datatype}
+                    ]
+                },
+            ]
+        }
+
+        ...
+
+        Arguments 
+        ---------
+        `file_path`: path to json file.
+
+        `output_path`: where the script is to be outputted.
+
+        `schema`: schema to create the table in.
+
+        `non_null_fields`: list of fields that are be NOT NULL
+
+        `add_geom_column`: adds SELECT AddGeometryColumn POSTGIS function after each CREATE statement
+        """
+
+        with open(file_path, 'r') as json_file, open(output_path, 'w') as script:
+            data = json.load(json_file)
+
+            crs = data["crs_id"]
+            for layer in data["Layers"]:
+                table = layer["name"]
+                geom = layer["geometry"]
+
+                stmt = f"CREATE TABLE {schema}.{table} (\n"
+                for field in layer["fields"]:
+                    ((col, dtype),) = field.items()
+                    stmt += f"   {col} {dtype}"
+                    if col not in non_null_fields:
+                        stmt += " NULL, \n"
+                    else:
+                        stmt += ",\n"
+
+                stmt = stmt[:-3] + "\n)\n\n"
+                
+                if add_geom_column:
+                    stmt += f"SELECT AddGeometryColumn('{schema}','{table}','geom',{crs},'{geom}',2);\n\n\n"
+
+                script.write(stmt)
+
+    def create_triggers(self, schema_select: str, schema_insert: str, output_path: str):
+        """
+        creates triggers for a database.
+
+        selects all tables and their associative columns from schema name `schema_select`.
+
+        writes a trigger for each table to insert into `schema_insert`.
+
+        ...
+
+        Arguments
+        ---------
+
+        `schema_select`: str
+
+        `schema_insert`: str
+        
+        `output_path`: str
+        """
+
+        results = self.executer(
+            f"""
+            SELECT table_name, array_agg(CAST(column_name AS text)) AS fields 
+            FROM information_schema.columns 
+            WHERE table_schema = '{schema_select}' GROUP BY table_name""",
+            True
+        )
+
+        func_logic = "BEGIN\n   INSERT INTO {schema}.{table} ({columns})\n   VALUES ({values});\n   RETURN NEW;\nEND;\n\n"
+
+        with open(output_path, "w") as file:
+            for row in results:
+                (table, columns) = row
+                file.write(
+                    func_logic.format(
+                        schema = schema_insert,
+                        table=table, 
+                        columns=",".join(columns),
+                        values = ",".join(f"OLD.{col}" for col in columns)
+                    )
+                )
+                      
